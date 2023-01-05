@@ -19,10 +19,10 @@ module GPIO  #(
   output reg [PDATA_SIZE  -1:0] gpio_o,
   output reg                    gpio_oe
 );
-  //////////////////////////////////////////////////////////////////
-  //
-  // Constants
-  //
+  
+  
+  /****************************Constants******************************/
+  
 
   localparam PADDR_SIZE = 32;
 
@@ -32,49 +32,42 @@ module GPIO  #(
              OUTPUT    = 2,
              INPUT     = 3;
  
-  //number of synchronisation flipflop stages on GPIO inputs
+  /*number of synchronisation flipflop stages on GPIO inputs*/
   localparam INPUT_STAGES = 2;
 
 
-  //////////////////////////////////////////////////////////////////
-  //
-  // Variables
-  //
+  /***************************** Variables***************************/
+  
 
-  //Control registers
+  /*Control registers*/
   reg [PDATA_SIZE-1:0] mode_reg,
-                         dir_reg,
-                         out_reg,
-                         in_reg;
+                       dir_reg,
+                       out_reg,
+                       in_reg;
      
-  //Input register, to prevent metastability
+  /*Input register, to prevent metastability*/
   reg [PDATA_SIZE-1:0] input_regs [INPUT_STAGES:0];
 
 
-  //////////////////////////////////////////////////////////////////
-  //
-  // Functions
-  //
+  /***************************** Functions***************************/
 
-  //Is this a valid read access?
+  /*Is this a valid read access?*/
  integer n =0;
  function automatic is_read(input  PSEL, input  PENABLE, input  PWRITE);
    is_read=(PSEL & PENABLE & (~PWRITE));
-endfunction
+ endfunction
 
-function automatic is_write(input PSEL, input  PENABLE, input PWRITE); 
- is_write=(PSEL & PENABLE & PWRITE);
-endfunction
+ function automatic is_write(input PSEL, input  PENABLE, input PWRITE); 
+   is_write=(PSEL & PENABLE & PWRITE);
+ endfunction
 
 
-  //Is this a valid write to address 0x...?
-  //Take 'address' as an argument
+  /*Is this a valid write to address ?*/
   function automatic is_write_to_adr(input [PADDR_SIZE-1:0] address);
     is_write_to_adr = (is_write(PSEL, PENABLE, PWRITE) & (PADDR == address));
   endfunction 
 
-  //What data is written?
-  //- Handles PSTRB, takes previous register/data value as an argument
+  /*What data is written?*/
   function automatic [PDATA_SIZE-1:0] get_write_value (input [PDATA_SIZE-1:0] orig_val);
     
     for ( n=0; n < PDATA_SIZE/8; n=n+1)begin
@@ -82,32 +75,23 @@ endfunction
      end
   endfunction 
 
-  //Clear bits on write
-  //- Handles PSTRB
+  /*Clear bits on write*/
   function automatic [PDATA_SIZE-1:0] get_clearonwrite_value (input [PDATA_SIZE-1:0] orig_val);
     for ( n=0; n < PDATA_SIZE/8; n=n+1)begin
        get_clearonwrite_value[n*8 +: 8] = PSTRB[n] ? orig_val[n*8 +: 8] & ~PWDATA[n*8 +: 8] : orig_val[n*8 +: 8];
      end
   endfunction 
 
+  /************************ Module Body****************************/
 
-  //////////////////////////////////////////////////////////////////
-  //
-  // Module Body
-  //
+  /* APB accesses*/
 
-  /*
-   * APB accesses
-   */
-  //The core supports zero-wait state accesses on all transfers.
-  //It is allowed to drive PREADY with a hard wired signal
   assign PREADY  = 1'b1; //always ready
   assign PSLVERR = 1'b0; //Never an error
 
 
-  /*
-   * APB Writes
-   */
+  /* APB Writes*/
+  
   //APB write to Mode register
   always @(posedge PCLK,negedge PRESETn) begin
     if      (!PRESETn              ) mode_reg <= {PDATA_SIZE{1'b0}};
@@ -121,17 +105,13 @@ endfunction
 
 
   //APB write to Output register
-  //treat writes to Input register same
   always @(posedge PCLK,negedge PRESETn)
     if      (!PRESETn                  ) out_reg <= {PDATA_SIZE{1'b0}};
-    else if ( is_write_to_adr(OUTPUT) ||
-              is_write_to_adr(INPUT )  ) out_reg <= get_write_value(out_reg);
+    else if ( is_write_to_adr(OUTPUT) || is_write_to_adr(INPUT )  ) out_reg <= get_write_value(out_reg);
 
 
 
-  /*
-   * APB Reads
-   */
+  /* APB Reads */
   always @(posedge PCLK)
     case (PADDR)
       MODE     : PRDATA <= mode_reg;
@@ -142,9 +122,7 @@ endfunction
     endcase
 
 
-  /*
-   * Internals
-   */
+  /* Internals*/
     
   always @(posedge PCLK)
     for (n=0; n<INPUT_STAGES; n=n+1)begin
@@ -156,20 +134,12 @@ endfunction
     in_reg <= input_regs[INPUT_STAGES-1];
 
 
-  // mode
-  // 0=push-pull    drive out_reg value onto transmitter input
-  // 1=open-drain   always drive '0' onto transmitter
+ 
   always @(posedge PCLK)
     for (n=0; n<PDATA_SIZE; n=n+1)begin
       gpio_o[n] <= mode_reg[n] ? 1'b0 : out_reg[n];
     end
 
-
-  // direction  mode          out_reg
-  // 0=input                           disable transmitter-enable (output enable)
-  // 1=output   0=push-pull            always enable transmitter
-  //            1=open-drain  1=Hi-Z   disable transmitter
-  //                          0=low    enable transmitter
   always @(posedge PCLK)
   
     for ( n=0; n<PDATA_SIZE; n=n+1)begin
