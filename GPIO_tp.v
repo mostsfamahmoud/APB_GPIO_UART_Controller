@@ -147,7 +147,5 @@ module apb_gpio_tb;
 
     #10
 	  $finish;
-    
   end
-  
 endmodule
